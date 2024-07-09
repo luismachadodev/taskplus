@@ -13,6 +13,7 @@ import {
   where,
   getDoc,
   addDoc,
+  getDocs
 } from 'firebase/firestore'
 
 import { Textarea } from "@/components/textarea";
@@ -25,18 +26,28 @@ interface TaskProps {
     user: string
     taskId: string
   }
+  allComments: CommentProps[]
 }
 
-export default function Task({ item }: TaskProps) {
+interface CommentProps {
+  id: string
+  comment: string
+  taskId: string
+  user: string
+  name: string
+}
+
+export default function Task({ item, allComments }: TaskProps) {
   const { data: session } = useSession()
   const [input, setInput] = useState("")
+  const [comments, setComments] = useState<CommentProps[]>(allComments || [])
 
-  async function handleComment(event: FormEvent){
+  async function handleComment(event: FormEvent) {
     event.preventDefault()
 
-    if(input === "") return
+    if (input === "") return
 
-    if(!session?.user?.email || !session?.user?.name) return
+    if (!session?.user?.email || !session?.user?.name) return
 
     try {
       const docRef = await addDoc(collection(db, "comments"), {
@@ -69,16 +80,28 @@ export default function Task({ item }: TaskProps) {
       </main>
       <section className={styles.commentsContainer}>
         <h2>Deixar comentário</h2>
-          <form onSubmit={handleComment}>
-            <Textarea
-              value={input}
-              onChange={ (event: ChangeEvent<HTMLTextAreaElement>) => setInput(event.target.value)}
-              placeholder="Digite seu comentário..."
-            />
-            <button className={styles.button} disabled={!session?.user}>
-              Enviar comentário
-            </button>
-          </form>
+        <form onSubmit={handleComment}>
+          <Textarea
+            value={input}
+            onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setInput(event.target.value)}
+            placeholder="Digite seu comentário..."
+          />
+          <button className={styles.button} disabled={!session?.user}>
+            Enviar comentário
+          </button>
+        </form>
+      </section>
+      <section className={styles.commentsContainer}>
+        <h2>Todos comentários</h2>
+        {comments.length === 0 && (
+          <span>Nenhum comentário foi encontrado...</span>
+        )}
+
+        {comments.map((item) => (
+          <article key={item.id} className={styles.comment}>
+            <p>{item.comment}</p>
+          </article>
+        ))}
       </section>
     </div>
   )
@@ -86,8 +109,22 @@ export default function Task({ item }: TaskProps) {
 
 export const getServerSideProps: GetServerSideProps = async ({ params }) => {
   const id = params?.id as string
-
   const docRef = doc(db, "tarefas", id)
+
+  const q = query(collection(db, "comments"), where("taskId", "==", id))
+  const snapshotComments = await getDocs(q)
+
+  let allComents: CommentProps[] = []
+  snapshotComments.forEach((doc) => {
+    allComents.push({
+      id: doc.id,
+      comment: doc.data().comment,
+      user: doc.data().user,
+      name: doc.data().name,
+      taskId: doc.data().taskId
+    })
+  })
+
   const snapshot = await getDoc(docRef)
 
   if (snapshot.data() === undefined) {
@@ -120,7 +157,8 @@ export const getServerSideProps: GetServerSideProps = async ({ params }) => {
 
   return {
     props: {
-      item: task
+      item: task,
+      allComments: allComents
     }
   }
 }
